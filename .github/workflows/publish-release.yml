@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-      
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,16 +22,11 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: 发布项目
-        run: >
-          dotnet publish WinLinkManager.App
-          -c Release
-          -r win-x64
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:DebugType=none
-          -o publish
+      - name: 发布项目 (框架依赖, 无需运行时)
+        run: dotnet publish WinLinkManager.App -c Release -o publish
+
+      - name: 打包发布文件
+        run: Compress-Archive -Path publish\* -DestinationPath WinLinkManager.zip
 
       - name: 上传到 GitHub Release
         uses: softprops/action-gh-release@v2
@@ -39,11 +34,13 @@ jobs:
           name: WinLinkManager ${{ github.event.inputs.version }}
           tag_name: ${{ github.event.inputs.version }}
           body: |
+            ## 说明
+            - .NET Framework 4.8 框架依赖发布，**无需安装任何运行时**（Windows 10/11 自带）
+            - 下载 `WinLinkManager.zip`，解压后右键 `WinLinkManager.App.exe` → 以管理员身份运行
+            - 大小约 2MB
+
             ## 更新内容
             - 自动构建，提交: ${{ github.sha }}
-
-            ## 使用
-            下载 `WinLinkManager.App.exe`，右键 → 以管理员身份运行。
-          files: publish/WinLinkManager.App.exe
+          files: WinLinkManager.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

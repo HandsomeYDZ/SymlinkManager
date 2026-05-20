@@ -190,7 +190,7 @@ public class AppDbContext
             await cmd.ExecuteNonQueryAsync();
         }
 
-        await tx.CommitAsync();
+        tx.Commit();
     }
 
     public async Task DeleteLinkAsync(string linkPath)
@@ -303,6 +303,6 @@ public class AppDbContext
             await cmd.ExecuteNonQueryAsync();
         }
 
-        await tx.CommitAsync();
+        tx.Commit();
     }
 }

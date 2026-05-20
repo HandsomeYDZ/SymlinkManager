@@ -65,7 +65,9 @@ public partial class App : Application
 
             if (result == MessageBoxResult.Yes)
             {
-                var exePath = Environment.ProcessPath!;
+                var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
+                              ?? System.Reflection.Assembly.GetEntryAssembly()?.Location
+                              ?? "";
                 var psi = new ProcessStartInfo(exePath)
                 {
                     UseShellExecute = true,

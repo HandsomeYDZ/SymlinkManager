@@ -16,8 +16,8 @@
 
 ## 技术栈
 
-- C# / .NET 10 / WPF
-- NTFS USN (FSCTL_ENUM_USN_DATA) 
+- C# / .NET Framework 4.8 / WPF
+- NTFS USN (FSCTL_ENUM_USN_DATA)
 - SQLite 嵌入式数据库
 
 ## 使用
@@ -28,17 +28,19 @@
 dotnet run --project WinLinkManager.App
 ```
 
-### 独立 EXE（无需 .NET 运行时）
+### 下载使用（无需安装任何运行时）
 
-从 [Releases](../../releases) 下载 `WinLinkManager.App.exe`，右键 → **以管理员身份运行**。
+从 [Releases](../../releases) 下载 `WinLinkManager.zip`（约 3.6MB），解压后右键 `WinLinkManager.App.exe` → **以管理员身份运行**。
+
+> **无需安装 .NET 运行时** — Windows 10/11 自带 .NET Framework 4.8/4.8.1，解压即用。
 
 ### 自行打包
 
 ```bash
-dotnet publish WinLinkManager.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish
+dotnet publish WinLinkManager.App -c Release -o publish
 ```
 
-输出：`publish\WinLinkManager.App.exe` (~142MB)
+输出：`publish\` 目录（约 8MB），可以打包为 zip 分发。
 
 > **需要管理员权限** — 扫描 NTFS 卷必需，启动时如果不在管理员终端会弹出提权对话框。
 

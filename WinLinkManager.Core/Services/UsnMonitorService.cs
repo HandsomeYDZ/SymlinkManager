@@ -87,7 +87,7 @@ public class UsnMonitorService : IUsnMonitorService, IDisposable
         try
         {
             var handle = _volumeService.GetHandle();
-            if (handle.Handle == nint.Zero || handle.Handle == new nint(-1))
+            if (handle.Handle == IntPtr.Zero || handle.Handle == new IntPtr(-1))
                 return false;
 
             // Send a zero-length FSCTL_QUERY_USN_JOURNAL to test availability.
@@ -102,10 +102,10 @@ public class UsnMonitorService : IUsnMonitorService, IDisposable
                     @"\\.\C:",
                     NtfsNative.GENERIC_READ,
                     NtfsNative.FILE_SHARE_READ | NtfsNative.FILE_SHARE_WRITE,
-                    nint.Zero,
+                    IntPtr.Zero,
                     NtfsNative.OPEN_EXISTING,
                     NtfsNative.FILE_FLAG_BACKUP_SEMANTICS,
-                    nint.Zero);
+                    IntPtr.Zero);
 
                 if (probeHandle.IsInvalid)
                     return false;
@@ -116,12 +116,12 @@ public class UsnMonitorService : IUsnMonitorService, IDisposable
                 return NtfsNative.DeviceIoControl(
                     probeHandle,
                     NtfsNative.FSCTL_QUERY_USN_JOURNAL,
-                    nint.Zero,
+                    IntPtr.Zero,
                     0,
                     outputBuffer,
                     32,
                     out _,
-                    nint.Zero);
+                    IntPtr.Zero);
             }
             finally
             {

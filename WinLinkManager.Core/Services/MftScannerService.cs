@@ -128,7 +128,7 @@ public class MftScannerService : IScannerService
                     outBuffer,
                     (uint)bufferSize,
                     out var bytesReturned,
-                    nint.Zero);
+                    IntPtr.Zero);
 
                 if (!success)
                 {
@@ -145,7 +145,7 @@ public class MftScannerService : IScannerService
                 }
 
                 var nextFileReferenceNumber = (ulong)Marshal.ReadInt64(outBuffer);
-                var recordPtr = nint.Add(outBuffer, 8);
+                var recordPtr = IntPtr.Add(outBuffer, 8);
                 var bytesRemaining = (int)bytesReturned - 8;
 
                 while (bytesRemaining > 0)
@@ -183,7 +183,7 @@ public class MftScannerService : IScannerService
                             record.FileAttributes));
                     }
 
-                    recordPtr = nint.Add(recordPtr, (int)recordLength);
+                    recordPtr = IntPtr.Add(recordPtr, (int)recordLength);
                     bytesRemaining -= (int)recordLength;
                 }
 
@@ -228,17 +228,17 @@ public class MftScannerService : IScannerService
     {
         var pathRoot = Path.GetPathRoot(rootDir);
         if (string.IsNullOrEmpty(pathRoot))
-            return new SafeFileHandle(new nint(-1), true);
+            return new SafeFileHandle(new IntPtr(-1), true);
 
         var volumePath = @"\\.\" + pathRoot.TrimEnd(Path.DirectorySeparatorChar);
         return NtfsNative.CreateFileW(
             volumePath,
             NtfsNative.GENERIC_READ,
             NtfsNative.FILE_SHARE_READ | NtfsNative.FILE_SHARE_WRITE | NtfsNative.FILE_SHARE_DELETE,
-            nint.Zero,
+            IntPtr.Zero,
             NtfsNative.OPEN_EXISTING,
             NtfsNative.FILE_FLAG_BACKUP_SEMANTICS,
-            nint.Zero);
+            IntPtr.Zero);
     }
 
     private static bool TryBuildFullPath(
@@ -276,7 +276,7 @@ public class MftScannerService : IScannerService
         var fileAttributes = (uint)Marshal.ReadInt32(recordPtr, 52);
         var fileNameLength = (ushort)Marshal.ReadInt16(recordPtr, 56);
         var fileNameOffset = (ushort)Marshal.ReadInt16(recordPtr, 58);
-        var namePtr = nint.Add(recordPtr, fileNameOffset);
+        var namePtr = IntPtr.Add(recordPtr, fileNameOffset);
         var fileName = Marshal.PtrToStringUni(namePtr, fileNameLength / 2) ?? string.Empty;
         return new ParsedUsnRecord(fileReferenceNumber, parentFileReferenceNumber, fileAttributes, fileName);
     }
@@ -392,10 +392,10 @@ public class MftScannerService : IScannerService
             path,
             NtfsNative.GENERIC_READ,
             NtfsNative.FILE_SHARE_READ | NtfsNative.FILE_SHARE_WRITE | NtfsNative.FILE_SHARE_DELETE,
-            nint.Zero,
+            IntPtr.Zero,
             NtfsNative.OPEN_EXISTING,
             flags,
-            nint.Zero);
+            IntPtr.Zero);
 
         if (handle.IsInvalid)
             return null;
@@ -406,12 +406,12 @@ public class MftScannerService : IScannerService
             if (!NtfsNative.DeviceIoControl(
                     handle,
                     NtfsNative.FSCTL_GET_REPARSE_POINT,
-                    nint.Zero,
+                    IntPtr.Zero,
                     0,
                     reparseBuffer,
                     NtfsNative.MAX_REPARSE_DATA_BUFFER_SIZE,
                     out _,
-                    nint.Zero))
+                    IntPtr.Zero))
                 return null;
 
             uint reparseTag = (uint)Marshal.ReadInt32(reparseBuffer);
@@ -473,8 +473,8 @@ public class MftScannerService : IScannerService
     {
         try
         {
-            if (target.EndsWith(Path.DirectorySeparatorChar) ||
-                target.EndsWith(Path.AltDirectorySeparatorChar))
+            if (target.EndsWith(Path.DirectorySeparatorChar.ToString()) ||
+                target.EndsWith(Path.AltDirectorySeparatorChar.ToString()))
                 target = target.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
             return Directory.Exists(target) || File.Exists(target);

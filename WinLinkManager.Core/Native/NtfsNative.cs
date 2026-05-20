@@ -104,7 +104,7 @@ public static class NtfsNative
         ushort nameOffset = (ushort)Marshal.ReadInt16(reparseBuffer, 8);  // SubstituteNameOffset
         ushort nameLength = (ushort)Marshal.ReadInt16(reparseBuffer, 10); // SubstituteNameLength
 
-        IntPtr namePtr = nint.Add(reparseBuffer, pathBufferOffset + nameOffset);
+        IntPtr namePtr = IntPtr.Add(reparseBuffer, pathBufferOffset + nameOffset);
         // nameLength is in bytes, each WCHAR is 2 bytes
         int charCount = nameLength / 2;
         return Marshal.PtrToStringUni(namePtr, charCount) ?? string.Empty;
@@ -117,7 +117,7 @@ public static class NtfsNative
     public static string? ResolveTarget(SafeFileHandle handle)
     {
         // First call to get buffer size (returns required character count including null terminator)
-        uint bufSize = GetFinalPathNameByHandle(handle, nint.Zero, 0, VOLUME_NAME_DOS);
+        uint bufSize = GetFinalPathNameByHandle(handle, IntPtr.Zero, 0, VOLUME_NAME_DOS);
         if (bufSize == 0) return null;
 
         nint buffer = Marshal.AllocHGlobal((int)(bufSize * 2));
@@ -127,7 +127,7 @@ public static class NtfsNative
             if (result == 0) return null;
 
             string path = Marshal.PtrToStringUni(buffer) ?? string.Empty;
-            return path.StartsWith(@"\\?\") ? path[4..] : path;
+            return path.StartsWith(@"\\?\") ? path.Substring(4) : path;
         }
         finally
         {
@@ -138,20 +138,20 @@ public static class NtfsNative
     public static string NtToWin32Path(string ntPath)
     {
         if (ntPath.StartsWith(@"\??\"))
-            return ntPath[4..];
+            return ntPath.Substring(4);
         if (ntPath.StartsWith(@"\\?\"))
-            return ntPath[4..];
+            return ntPath.Substring(4);
         if (ntPath.StartsWith(@"\Device\HarddiskVolume"))
         {
             // Simplified: assume volume 1 maps to C:
-            var rest = ntPath["\\Device\\HarddiskVolume".Length..];
+            var rest = ntPath.Substring("\\Device\\HarddiskVolume".Length);
             var volNumStr = "";
             foreach (var c in rest)
             {
                 if (char.IsDigit(c)) volNumStr += c;
                 else break;
             }
-            var remainder = rest[volNumStr.Length..];
+            var remainder = rest.Substring(volNumStr.Length);
             return $"C:{remainder}";
         }
         return ntPath;

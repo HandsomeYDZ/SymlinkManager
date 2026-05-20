@@ -89,15 +89,14 @@ public class SettingsViewModel : ViewModelBase
 
     private void AddScanDir()
     {
-        var dialog = new OpenFolderDialog
+        string path;
+        using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
         {
-            Title = "选择要扫描的目录",
-            Multiselect = false
-        };
-
-        if (dialog.ShowDialog() != true) return;
-
-        var path = dialog.FolderName;
+            dialog.Description = "选择要扫描的目录";
+            dialog.ShowNewFolderButton = true;
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            path = dialog.SelectedPath;
+        }
         if (ScanDirectories.Any(d => d.Path == path)) return;
 
         ScanDirectories.Add(new ScanDirectoryItem { Path = path, IsExcluded = false });

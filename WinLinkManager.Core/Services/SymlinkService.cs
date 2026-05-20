@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 using WinLinkManager.Core.Models;
+using WinLinkManager.Core.Native;
 
 namespace WinLinkManager.Core.Services;
 
@@ -153,8 +154,13 @@ public class SymlinkService : ISymlinkService
         {
             try
             {
-                var target = Directory.ResolveLinkTarget(linkPath, false);
-                currentTarget = target?.FullName ?? string.Empty;
+                using var handle = CreateFileW(linkPath, GENERIC_READ, FILE_SHARE_READ,
+                    IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+                if (!handle.IsInvalid)
+                {
+                    var target = NtfsNative.ResolveTarget(handle);
+                    currentTarget = target ?? string.Empty;
+                }
             }
             catch
             {

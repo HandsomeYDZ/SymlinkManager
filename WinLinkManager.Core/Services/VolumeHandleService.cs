@@ -15,12 +15,12 @@ public class VolumeHandleService : IVolumeHandleService
             volumePath,
             NtfsNative.GENERIC_READ,
             NtfsNative.FILE_SHARE_READ | NtfsNative.FILE_SHARE_WRITE | NtfsNative.FILE_SHARE_DELETE,
-            nint.Zero,
+            IntPtr.Zero,
             NtfsNative.OPEN_EXISTING,
             NtfsNative.FILE_FLAG_BACKUP_SEMANTICS,
-            nint.Zero);
+            IntPtr.Zero);
 
-        Wrapper.Handle = _volumeHandle?.DangerousGetHandle() ?? nint.Zero;
+        Wrapper.Handle = _volumeHandle?.DangerousGetHandle() ?? IntPtr.Zero;
     }
 
     public SafeHandleWrapper GetHandle() => Wrapper;
@@ -29,6 +29,6 @@ public class VolumeHandleService : IVolumeHandleService
     {
         _volumeHandle?.Dispose();
         _volumeHandle = null;
-        Wrapper.Handle = nint.Zero;
+        Wrapper.Handle = IntPtr.Zero;
     }
 }
