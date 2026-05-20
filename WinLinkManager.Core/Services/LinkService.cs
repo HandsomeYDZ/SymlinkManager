@@ -7,9 +7,12 @@ using WinLinkManager.Core.Native;
 
 namespace WinLinkManager.Core.Services;
 
-public class SymlinkService : ISymlinkService
+/// <summary>
+/// 符号链接操作服务：创建、删除、类型检测与转换
+/// </summary>
+public class LinkService : ILinkService
 {
-    // Win32 constants
+    // Win32 常量定义
     private const uint FILE_ATTRIBUTE_REPARSE_POINT = 0x400;
     private const uint INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF;
     private const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
@@ -64,30 +67,30 @@ public class SymlinkService : ISymlinkService
     private const uint FILE_ATTRIBUTE_NORMAL = 0x80;
 
     private readonly IIndexService _indexService;
-    private readonly ILogger<SymlinkService>? _logger;
+    private readonly ILogger<LinkService>? _logger; // 为 null 时跳过日志记录
 
-    public SymlinkService(IIndexService indexService, ILogger<SymlinkService>? logger = null)
+    public LinkService(IIndexService indexService, ILogger<LinkService>? logger = null)
     {
         _indexService = indexService;
         _logger = logger;
     }
 
-    public SymlinkService(IIndexService indexService) : this(indexService, null) { }
-
-    public bool CreateSymlink(string linkPath, string targetPath, SymlinkType type)
+    /// <summary>根据类型创建符号链接（文件/目录/Junction）</summary>
+    public bool CreateLink(string linkPath, string targetPath, LinkType type)
     {
         try
         {
             bool result = type switch
             {
-                SymlinkType.FileSymlink => CreateSymbolicLinkW(linkPath, targetPath, SYMLINK_FLAG_FILE),
-                SymlinkType.DirectorySymlink => CreateSymbolicLinkW(linkPath, targetPath, SYMLINK_FLAG_DIR),
-                SymlinkType.Junction => CreateJunction(linkPath, targetPath),
+                LinkType.FileLink => CreateSymbolicLinkW(linkPath, targetPath, SYMLINK_FLAG_FILE),
+                LinkType.DirectoryLink => CreateSymbolicLinkW(linkPath, targetPath, SYMLINK_FLAG_DIR),
+                LinkType.Junction => CreateJunction(linkPath, targetPath),
                 _ => false
             };
 
+            // 创建失败时记录 Win32 错误码
             if (!result)
-                _logger?.LogWarning("CreateSymlink 失败 (LastError={Error}): {LinkPath} -> {TargetPath} 类型={Type}",
+                _logger?.LogWarning("CreateLink 失败 (LastError={Error}): {LinkPath} -> {TargetPath} 类型={Type}",
                     GetLastError(), linkPath, targetPath, type);
 
             return result;
@@ -99,11 +102,12 @@ public class SymlinkService : ISymlinkService
         }
     }
 
-    public void DeleteSymlink(string linkPath, SymlinkType type)
+    /// <summary>删除符号链接（目录型优先尝试 Directory.Delete）</summary>
+    public void DeleteLink(string linkPath, LinkType type)
     {
         try
         {
-            if (type == SymlinkType.DirectorySymlink || type == SymlinkType.Junction)
+            if (type == LinkType.DirectoryLink || type == LinkType.Junction)
             {
                 try
                 {
@@ -126,10 +130,11 @@ public class SymlinkService : ISymlinkService
         }
     }
 
-    public ConvertResult ConvertType(string linkPath, SymlinkType currentType, SymlinkType newType, string newTarget)
+    /// <summary>转换链接类型，含备份-删除-重建-清理的安全流程</summary>
+    public ConvertResult ConvertType(string linkPath, LinkType currentType, LinkType newType, string newTarget)
     {
         // Guard: 文件符号链接不支持类型转换
-        if (currentType == SymlinkType.FileSymlink)
+        if (currentType == LinkType.FileLink)
         {
             return new ConvertResult
             {
@@ -179,7 +184,7 @@ public class SymlinkService : ISymlinkService
 
         // Step 2: 创建备份交接点
         var backupPath = linkPath + "_backup_" + DateTime.Now.Ticks;
-        if (!CreateSymlink(backupPath, currentTarget, SymlinkType.Junction))
+        if (!CreateLink(backupPath, currentTarget, LinkType.Junction))
         {
             return new ConvertResult
             {
@@ -189,10 +194,10 @@ public class SymlinkService : ISymlinkService
         }
 
         // Step 3: 删除当前链接
-        DeleteSymlink(linkPath, currentType);
+        DeleteLink(linkPath, currentType);
 
         // Step 4: 创建新类型链接
-        if (!CreateSymlink(linkPath, currentTarget, newType))
+        if (!CreateLink(linkPath, currentTarget, newType))
         {
             // 恢复备份
             try
@@ -214,7 +219,7 @@ public class SymlinkService : ISymlinkService
         // Step 5: 删除备份（尽力而为）
         try
         {
-            DeleteSymlink(backupPath, SymlinkType.Junction);
+            DeleteLink(backupPath, LinkType.Junction);
         }
         catch (Exception ex)
         {
@@ -224,15 +229,16 @@ public class SymlinkService : ISymlinkService
         return new ConvertResult { Success = true };
     }
 
-    public SymlinkType DetectType(string linkPath)
+    /// <summary>检测路径上的链接类型，通过读取重解析点标识判断</summary>
+    public LinkType DetectType(string linkPath)
     {
         if (!Exists(linkPath))
-            return SymlinkType.FileSymlink;
+            return LinkType.FileLink;
 
         var attrs = GetFileAttributesW(linkPath);
         if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_REPARSE_POINT) == 0)
         {
-            return Directory.Exists(linkPath) ? SymlinkType.DirectorySymlink : SymlinkType.FileSymlink;
+            return Directory.Exists(linkPath) ? LinkType.DirectoryLink : LinkType.FileLink;
         }
 
         // Read reparse point data via DeviceIoControl
@@ -246,7 +252,7 @@ public class SymlinkService : ISymlinkService
             IntPtr.Zero);
 
         if (handle.IsInvalid)
-            return Directory.Exists(linkPath) ? SymlinkType.DirectorySymlink : SymlinkType.FileSymlink;
+            return Directory.Exists(linkPath) ? LinkType.DirectoryLink : LinkType.FileLink;
 
         const int bufferSize = 16384;
         var buffer = Marshal.AllocHGlobal(bufferSize);
@@ -258,15 +264,15 @@ public class SymlinkService : ISymlinkService
                 var tag = (uint)Marshal.ReadInt32(buffer);
 
                 if (tag == IO_REPARSE_TAG_MOUNT_POINT)
-                    return SymlinkType.Junction;
+                    return LinkType.Junction;
 
                 if (tag == IO_REPARSE_TAG_SYMLINK)
                 {
                     // SymbolicLinkReparseBuffer.Flags is at offset 16
                     var flags = Marshal.ReadInt32(buffer, 16);
                     if ((flags & SYMLINK_FLAG_DIRECTORY) != 0)
-                        return SymlinkType.DirectorySymlink;
-                    return SymlinkType.FileSymlink;
+                        return LinkType.DirectoryLink;
+                    return LinkType.FileLink;
                 }
             }
         }
@@ -275,11 +281,13 @@ public class SymlinkService : ISymlinkService
             Marshal.FreeHGlobal(buffer);
         }
 
-        return Directory.Exists(linkPath) ? SymlinkType.DirectorySymlink : SymlinkType.FileSymlink;
+        return Directory.Exists(linkPath) ? LinkType.DirectoryLink : LinkType.FileLink;
     }
 
+    /// <summary>检查路径是否存在</summary>
     public bool Exists(string linkPath) => File.Exists(linkPath) || Directory.Exists(linkPath);
 
+    /// <summary>创建交接点（优先尝试目录符号链接，失败则通过 DeviceIoControl 创建）</summary>
     private bool CreateJunction(string linkPath, string targetPath)
     {
         // 优先使用目录符号链接（Win10+ 开发者模式下可用）

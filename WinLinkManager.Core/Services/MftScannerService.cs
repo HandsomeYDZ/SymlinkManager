@@ -7,27 +7,29 @@ using WinLinkManager.Core.Native;
 
 namespace WinLinkManager.Core.Services;
 
+/// <summary>
+/// NTFS MFT 扫描器，通过 USN 日志高效枚举所有重解析点
+/// </summary>
 public class MftScannerService : IScannerService
 {
-    private readonly VolumeHandleService _volumeService;
     private readonly AppDbContext _dbContext;
     private readonly ILogger<MftScannerService> _logger;
 
     public MftScannerService(
-        VolumeHandleService volumeService,
         AppDbContext dbContext,
         ILogger<MftScannerService> logger)
     {
-        _volumeService = volumeService;
         _dbContext = dbContext;
         _logger = logger;
     }
 
-    public async IAsyncEnumerable<SymlinkEntry> FullScanAsync(
+    /// <summary>全量扫描：按配置遍历包含的根目录，流式返回发现的符号链接</summary>
+    public async IAsyncEnumerable<LinkEntry> FullScanAsync(
         List<ScanDirectoryConfig> scanDirs,
         IProgress<ScanProgress>? progress,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
+        // 构建排除路径集合和包含路径列表
         var excluded = scanDirs
             .Where(d => d.IsExcluded)
             .Select(d => NormalizeRootPath(d.Path))
@@ -39,6 +41,7 @@ public class MftScannerService : IScannerService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // 若无包含路径，默认扫描所有固定硬盘根目录
         if (!included.Any())
         {
             included = DriveInfo.GetDrives()
@@ -47,8 +50,9 @@ public class MftScannerService : IScannerService
                 .ToList();
         }
 
-        var counters = new ScanCounters();
+        var counters = new ScanCounters(); // 扫描计数保持器
 
+        // 依次扫描每个包含的根目录
         foreach (var rootDir in included)
         {
             ct.ThrowIfCancellationRequested();
@@ -61,6 +65,7 @@ public class MftScannerService : IScannerService
             }
         }
 
+        // 报告扫描完成
         progress?.Report(new ScanProgress
         {
             TotalScanned = counters.TotalScanned,
@@ -69,6 +74,7 @@ public class MftScannerService : IScannerService
         });
     }
 
+    /// <summary>将路径标准化为以分隔符结尾的根目录格式</summary>
     private static string NormalizeRootPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -78,19 +84,22 @@ public class MftScannerService : IScannerService
         return root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
     }
 
+    /// <summary>扫描计数器（可变字段，避免装箱）</summary>
     private sealed class ScanCounters
     {
         public long TotalScanned;
         public long LinksFound;
     }
 
-    private IEnumerable<SymlinkEntry> EnumerateReparsePointsOnVolume(
+    /// <summary>通过 USN 日志枚举卷上的重解析点，失败时回退到文件系统遍历</summary>
+    private IEnumerable<LinkEntry> EnumerateReparsePointsOnVolume(
         string rootDir,
         HashSet<string> excluded,
         IProgress<ScanProgress>? progress,
         ScanCounters counters,
         CancellationToken ct)
     {
+        // 打开卷句柄（如失败则回退到目录遍历）
         using var volumeHandle = OpenVolumeHandle(rootDir);
         if (volumeHandle is null || volumeHandle.IsInvalid)
         {
@@ -100,16 +109,18 @@ public class MftScannerService : IScannerService
             yield break;
         }
 
+        // 目录映射表（FRN -> 名称/父FRN）和重解析点候选列表
         var directories = new Dictionary<ulong, DirectoryInfoEntry>();
         var reparseCandidates = new List<ReparseCandidate>();
 
-        const int bufferSize = 4 * 1024 * 1024;
+        const int bufferSize = 4 * 1024 * 1024; // 4MB 输出缓冲区
         var outBuffer = Marshal.AllocHGlobal(bufferSize);
         var inSize = Marshal.SizeOf<NtfsNative.MFT_ENUM_DATA_V1>();
         var inBuffer = Marshal.AllocHGlobal(inSize);
 
         try
         {
+            // 从 MFT 开始处枚举所有 USN 记录
             var enumData = new NtfsNative.MFT_ENUM_DATA_V1
             {
                 StartFileReferenceNumber = 0,
@@ -118,6 +129,7 @@ public class MftScannerService : IScannerService
             };
             Marshal.StructureToPtr(enumData, inBuffer, false);
 
+            // 分页遍历 USN 日志（每批读满缓冲区后继续下一页）
             while (!ct.IsCancellationRequested)
             {
                 var success = NtfsNative.DeviceIoControl(
@@ -133,6 +145,7 @@ public class MftScannerService : IScannerService
                 if (!success)
                 {
                     var error = Marshal.GetLastWin32Error();
+                    // ERROR_HANDLE_EOF(38) / ERROR_MORE_DATA(234) 表示枚举完成
                     if (error == 38 || error == 234)
                     {
                         break;
@@ -144,6 +157,7 @@ public class MftScannerService : IScannerService
                     yield break;
                 }
 
+                // 解析批量返回的 USN 记录
                 var nextFileReferenceNumber = (ulong)Marshal.ReadInt64(outBuffer);
                 var recordPtr = IntPtr.Add(outBuffer, 8);
                 var bytesRemaining = (int)bytesReturned - 8;
@@ -157,6 +171,7 @@ public class MftScannerService : IScannerService
                     var record = ParseUsnRecord(recordPtr);
                     counters.TotalScanned++;
 
+                    // 每 1024 条报告一次进度
                     if ((counters.TotalScanned & 0x3FF) == 0)
                     {
                         progress?.Report(new ScanProgress
@@ -167,6 +182,7 @@ public class MftScannerService : IScannerService
                         });
                     }
 
+                    // 记录目录信息用于后续路径拼接
                     if (record.IsDirectory)
                     {
                         directories[record.FileReferenceNumber] = new DirectoryInfoEntry(
@@ -174,6 +190,7 @@ public class MftScannerService : IScannerService
                             record.FileName);
                     }
 
+                    // 收集重解析点候选（含符号链接和交接点）
                     if (record.IsReparsePoint)
                     {
                         reparseCandidates.Add(new ReparseCandidate(
@@ -190,9 +207,11 @@ public class MftScannerService : IScannerService
                 if (nextFileReferenceNumber == 0)
                     break;
 
+                // 设置下一页起始 FRN
                 Marshal.WriteInt64(inBuffer, (long)nextFileReferenceNumber);
             }
 
+            // 遍历所有重解析点候选，拼接完整路径并分析
             foreach (var candidate in reparseCandidates)
             {
                 ct.ThrowIfCancellationRequested();
@@ -224,6 +243,7 @@ public class MftScannerService : IScannerService
         }
     }
 
+    /// <summary>打开卷句柄用于 DeviceIoControl</summary>
     private static SafeFileHandle OpenVolumeHandle(string rootDir)
     {
         var pathRoot = Path.GetPathRoot(rootDir);
@@ -241,6 +261,7 @@ public class MftScannerService : IScannerService
             IntPtr.Zero);
     }
 
+    /// <summary>通过 FRN 目录映射表回溯父目录，拼接完整路径</summary>
     private static bool TryBuildFullPath(
         string rootDir,
         ReparseCandidate candidate,
@@ -269,6 +290,7 @@ public class MftScannerService : IScannerService
         return true;
     }
 
+    /// <summary>从非托管内存解析单条 USN 记录</summary>
     private static ParsedUsnRecord ParseUsnRecord(nint recordPtr)
     {
         var fileReferenceNumber = (ulong)Marshal.ReadInt64(recordPtr, 8);
@@ -281,8 +303,10 @@ public class MftScannerService : IScannerService
         return new ParsedUsnRecord(fileReferenceNumber, parentFileReferenceNumber, fileAttributes, fileName);
     }
 
+    /// <summary>目录信息：FRN 对应的父 FRN 和名称</summary>
     private sealed record DirectoryInfoEntry(ulong ParentFileReferenceNumber, string Name);
 
+    /// <summary>重解析点候选记录</summary>
     private sealed record ReparseCandidate(
         ulong FileReferenceNumber,
         ulong ParentFileReferenceNumber,
@@ -293,6 +317,7 @@ public class MftScannerService : IScannerService
         public bool IsReparsePoint => (FileAttributes & NtfsNative.FILE_ATTRIBUTE_REPARSE_POINT) != 0;
     }
 
+    /// <summary>解析后的 USN 记录</summary>
     private sealed record ParsedUsnRecord(
         ulong FileReferenceNumber,
         ulong ParentFileReferenceNumber,
@@ -303,7 +328,8 @@ public class MftScannerService : IScannerService
         public bool IsReparsePoint => (FileAttributes & NtfsNative.FILE_ATTRIBUTE_REPARSE_POINT) != 0;
     }
 
-    private IEnumerable<SymlinkEntry> ScanFileSystemTree(
+    /// <summary>回退方案：通过广度优先遍历文件系统树查找符号链接</summary>
+    private IEnumerable<LinkEntry> ScanFileSystemTree(
         string rootDir,
         HashSet<string> excluded,
         IProgress<ScanProgress>? progress,
@@ -348,15 +374,17 @@ public class MftScannerService : IScannerService
                 counters.TotalScanned++;
                 ct.ThrowIfCancellationRequested();
 
-                SymlinkEntry? entryResult = null;
+                LinkEntry? entryResult = null;
                 try
                 {
                     var attr = File.GetAttributes(entry);
+                    // 目录入队继续遍历
                     if (attr.HasFlag(System.IO.FileAttributes.Directory))
                     {
                         queue.Enqueue(entry);
                     }
 
+                    // 重解析点则分析其链接信息
                     if (attr.HasFlag(System.IO.FileAttributes.ReparsePoint))
                     {
                         entryResult = AnalyzeReparsePoint(entry);
@@ -382,7 +410,8 @@ public class MftScannerService : IScannerService
         }
     }
 
-    private static SymlinkEntry? AnalyzeReparsePoint(string path)
+    /// <summary>分析路径上的重解析点，读取链接类型和目标路径</summary>
+    private static LinkEntry? AnalyzeReparsePoint(string path)
     {
         uint flags = NtfsNative.FILE_FLAG_BACKUP_SEMANTICS |
                      NtfsNative.FILE_FLAG_OPEN_REPARSE_POINT |
@@ -414,27 +443,29 @@ public class MftScannerService : IScannerService
                     IntPtr.Zero))
                 return null;
 
+            // 根据重解析标记判断链接类型
             uint reparseTag = (uint)Marshal.ReadInt32(reparseBuffer);
-            SymlinkType linkType;
+            LinkType linkType;
             string target;
 
             if (reparseTag == NtfsNative.IO_REPARSE_TAG_SYMLINK)
             {
                 var attr = File.GetAttributes(path);
                 bool isDir = attr.HasFlag(FileAttributes.Directory);
-                linkType = isDir ? SymlinkType.DirectorySymlink : SymlinkType.FileSymlink;
+                linkType = isDir ? LinkType.DirectoryLink : LinkType.FileLink;
                 target = NtfsNative.ReadSubstituteName(reparseBuffer, reparseTag);
             }
             else if (reparseTag == NtfsNative.IO_REPARSE_TAG_MOUNT_POINT)
             {
-                linkType = SymlinkType.Junction;
+                linkType = LinkType.Junction;
                 target = NtfsNative.ReadSubstituteName(reparseBuffer, reparseTag);
             }
             else
             {
-                return null; // Unknown reparse tag, skip
+                return null; // 未知重解析标记，跳过
             }
 
+            // 将 NT 路径格式转换为 Win32 路径
             target = NtfsNative.NtToWin32Path(target);
             var linkName = Path.GetFileName(path);
             var now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
@@ -452,7 +483,7 @@ public class MftScannerService : IScannerService
             // Determine if target is valid (accessible)
             var status = CheckTargetValid(target) ? LinkStatus.Valid : LinkStatus.Broken;
 
-            return new SymlinkEntry
+            return new LinkEntry
             {
                 LinkPath = path,
                 LinkName = linkName,
@@ -469,6 +500,7 @@ public class MftScannerService : IScannerService
         }
     }
 
+    /// <summary>检查链接目标路径是否仍可访问</summary>
     private static bool CheckTargetValid(string target)
     {
         try
@@ -485,6 +517,7 @@ public class MftScannerService : IScannerService
         }
     }
 
+    /// <summary>检查目录是否在排除列表中（含子目录匹配）</summary>
     private static bool IsExcluded(string dir, HashSet<string> excluded)
     {
         var normalized = dir.TrimEnd(Path.DirectorySeparatorChar).ToLowerInvariant();

@@ -5,8 +5,12 @@ using WinLinkManager.Core.Models;
 
 namespace WinLinkManager.App.Converters;
 
+/// <summary>
+/// 将 LinkStatus 枚举映射到对应可视状态的可见性，用于指示图标显示。
+/// </summary>
 public class LinkStatusStyleConverter : IValueConverter
 {
+    /// <summary> 根据状态和参数匹配返回 Visible，否则 Collapsed。 </summary>
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not LinkStatus status || parameter is not string param)

@@ -7,6 +7,9 @@
              xmlns:converters="clr-namespace:WinLinkManager.App.Converters"
              mc:Ignorable="d"
              Title="符号链接管理器" Height="700" Width="1100">
+    <Window.InputBindings>
+        <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
+    </Window.InputBindings>
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <converters:LinkStatusStyleConverter x:Key="LinkStatusStyleConverter" />
@@ -53,6 +56,13 @@
             <TextBox Width="220" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
             <Separator />
             <Button Command="{Binding CreateNewLinkCommand}" Content="新建链接" />
+            <Button Command="{Binding EditLinkCommand}" Content="编辑链接" />
+            <Button Command="{Binding RefreshCommand}" Content="刷新" />
+            <Button Command="{Binding OpenLocationCommand}" Content="打开链接位置" />
+            <Button Command="{Binding OpenTargetLocationCommand}" Content="打开目标位置" />
+            <Separator />
+            <Button Command="{Binding AddSelectedToWhitelistCommand}" Content="批量添加白名单" />
+            <Button Command="{Binding RemoveSelectedFromWhitelistCommand}" Content="批量移除白名单" />
             <Button Command="{Binding ScanOrRebuildCommand}" Content="{Binding ScanButtonLabel}" />
             <Separator />
             <Button Command="{Binding OpenSettingsCommand}" Content="设置" />
@@ -72,7 +82,9 @@
                   VirtualizingPanel.VirtualizationMode="Recycling"
                   RowDetailsVisibilityMode="Collapsed"
                   GridLinesVisibility="None"
-                  SelectionMode="Single"
+                  SelectionMode="Extended"
+                  SelectionUnit="FullRow"
+                  SelectionChanged="DataGrid_SelectionChanged"
                   BorderThickness="0">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="链接名称" Binding="{Binding LinkName}" Width="150" />
@@ -105,15 +117,17 @@
             <DataGrid.ContextMenu>
                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                     <MenuItem Header="打开所在位置" Command="{Binding OpenLocationCommand}" />
+                    <MenuItem Header="打开目标位置" Command="{Binding OpenTargetLocationCommand}" />
                     <MenuItem Header="复制链接路径" Command="{Binding CopyLinkPathCommand}" />
                     <MenuItem Header="复制目标路径" Command="{Binding CopyTargetPathCommand}" />
                     <Separator />
                     <MenuItem Header="转换为交接点(/J)" Command="{Binding ConvertToJunctionCommand}" />
-                    <MenuItem Header="转换为目录符号链接(/D)" Command="{Binding ConvertToDirectorySymlinkCommand}" />
+                    <MenuItem Header="转换为目录符号链接(/D)" Command="{Binding ConvertToDirectoryLinkCommand}" />
                     <Separator />
                     <MenuItem Header="添加到白名单" Command="{Binding AddToWhitelistCommand}" />
                     <MenuItem Header="从白名单移除" Command="{Binding RemoveFromWhitelistCommand}" />
                     <Separator />
+                    <MenuItem Header="编辑链接" Command="{Binding EditLinkCommand}" />
                     <MenuItem Header="删除符号链接" Command="{Binding DeleteLinkCommand}" />
                 </ContextMenu>
             </DataGrid.ContextMenu>

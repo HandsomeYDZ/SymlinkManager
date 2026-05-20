@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Security.Principal;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,10 +9,12 @@ using Serilog;
 using WinLinkManager.Core.Data;
 using WinLinkManager.Core.Services;
 using WinLinkManager.App.ViewModels;
-using WinLinkManager.App.Views;
 
 namespace WinLinkManager.App;
 
+/// <summary>
+/// 应用程序入口，负责启动初始化、管理员权限检查和依赖注入。
+/// </summary>
 public partial class App : Application
 {
     private readonly CancellationTokenSource _appCts = new();
@@ -26,9 +27,10 @@ public partial class App : Application
     public static string ConfigDir => Path.Combine(DataDir, "config");
     public static string ConfigFile => Path.Combine(ConfigDir, "app.config");
 
-    public static string DefaultDatabasePath => Path.Combine(DataDir, "symlink-manager.db");
+    public static string DefaultDatabasePath => Path.Combine(DataDir, "winlink-manager.db");
     public static string LogDir => Path.Combine(DataDir, "logs");
 
+    /// <summary> 从文本文件加载配置（每行一个 Key=Value）。 </summary>
     public static AppConfig LoadConfig()
     {
         try
@@ -36,25 +38,41 @@ public partial class App : Application
             Directory.CreateDirectory(ConfigDir);
             if (File.Exists(ConfigFile))
             {
-                var json = File.ReadAllText(ConfigFile);
-                return JsonSerializer.Deserialize<AppConfig>(json) ?? new AppConfig();
+                var config = new AppConfig();
+                foreach (var line in File.ReadAllLines(ConfigFile))
+                {
+                    var eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+                    var key = line.Substring(0, eq).Trim();
+                    var val = line.Substring(eq + 1).Trim();
+                    if (key == "DatabasePath") config.DatabasePath = val;
+                }
+                return config;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"读取配置文件失败: {ex.Message}");
+        }
         return new AppConfig();
     }
 
+    /// <summary> 将配置保存为简单的 Key=Value 文本文件。 </summary>
     public static void SaveConfig(AppConfig config)
     {
         Directory.CreateDirectory(ConfigDir);
-        var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(ConfigFile, json);
+        var lines = new List<string>();
+        if (!string.IsNullOrWhiteSpace(config.DatabasePath))
+            lines.Add($"DatabasePath={config.DatabasePath}");
+        File.WriteAllLines(ConfigFile, lines);
     }
 
+    /// <summary> 应用启动入口：检查管理员权限、配置日志、注册 DI 服务并显示主窗口。 </summary>
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
+        // 非管理员权限时弹窗提示重启
         if (!IsAdministrator())
         {
             var result = MessageBox.Show(
@@ -79,6 +97,7 @@ public partial class App : Application
             return;
         }
 
+        // 捕获 UI 线程未处理异常，弹窗提示后标记已处理防止崩溃
         DispatcherUnhandledException += (_, ex) =>
         {
             MessageBox.Show($"UI 异常: {ex.Exception.Message}", "错误",
@@ -90,6 +109,7 @@ public partial class App : Application
         {
             var config = LoadConfig();
 
+            // 配置 Serilog 文件日志（每日滚动，保留 30 天）
             Directory.CreateDirectory(LogDir);
             Log.Logger = new LoggerConfiguration()
                 .MinimumLevel.Information()
@@ -98,6 +118,7 @@ public partial class App : Application
                     retainedFileCountLimit: 30)
                 .CreateLogger();
 
+            // 注册依赖注入服务
             var services = new ServiceCollection();
             services.AddLogging(b => b.AddSerilog(dispose: true));
 
@@ -107,13 +128,12 @@ public partial class App : Application
             services.AddSingleton(new AppDbContext($"Data Source={dbPath}"));
 
             services.AddSingleton<IIndexService, IndexService>();
-            services.AddSingleton<IVolumeHandleService, VolumeHandleService>();
-            services.AddSingleton<VolumeHandleService>();
-            services.AddSingleton<ISymlinkService, SymlinkService>();
+            services.AddSingleton<ILinkService, LinkService>();
             services.AddSingleton<IWhitelistService, WhitelistService>();
             services.AddSingleton<IScannerService, MftScannerService>();
             services.AddSingleton<IUsnMonitorService, UsnMonitorService>();
 
+            // ViewModel 和窗口注册
             services.AddSingleton<MainViewModel>();
             services.AddSingleton<MainWindow>();
 
@@ -139,6 +159,7 @@ public partial class App : Application
         }
     }
 
+    /// <summary> 后台初始化：数据库、索引、USN 监控，完成后通知主 ViewModel。 </summary>
     private async Task InitializeAsync()
     {
         if (_services == null) return;
@@ -155,10 +176,6 @@ public partial class App : Application
             var idx = _services.GetRequiredService<IIndexService>();
             await idx.InitializeAsync();
             idx.StartBatchPersist(_appCts.Token);
-
-            logger.LogInformation("打开卷句柄...");
-            var vol = _services.GetRequiredService<IVolumeHandleService>();
-            vol.OpenVolume();
 
             logger.LogInformation("加载扫描目录...");
             _ = await idx.GetScanDirectoriesAsync();
@@ -185,6 +202,7 @@ public partial class App : Application
         }
     }
 
+    /// <summary> 应用退出时清理资源：停止 USN 监控、释放 DI 容器、刷新日志。 </summary>
     protected override async void OnExit(ExitEventArgs e)
     {
         _appCts.Cancel();
@@ -199,6 +217,7 @@ public partial class App : Application
         base.OnExit(e);
     }
 
+    /// <summary> 检查当前进程是否以管理员身份运行。 </summary>
     private static bool IsAdministrator()
     {
         using var identity = WindowsIdentity.GetCurrent();

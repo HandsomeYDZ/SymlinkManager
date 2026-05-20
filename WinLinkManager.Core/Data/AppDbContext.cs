@@ -3,23 +3,28 @@ using WinLinkManager.Core.Models;
 
 namespace WinLinkManager.Core.Data;
 
+/// <summary>
+/// SQLite 数据库上下文，处理所有表 CRUD 和初始化
+/// </summary>
 public class AppDbContext
 {
     private readonly string _connectionString;
 
-    public AppDbContext(string connectionString = "Data Source=symlink-manager.db")
+    public AppDbContext(string connectionString = "Data Source=winlink-manager.db")
     {
         _connectionString = connectionString;
     }
 
+    /// <summary>创建新的 SQLite 连接</summary>
     public SqliteConnection CreateConnection() => new(_connectionString);
 
+    /// <summary>初始化数据库，创建所有表和默认数据</summary>
     public async Task InitializeAsync()
     {
         using var conn = CreateConnection();
         await conn.OpenAsync();
 
-        // PRAGMA — must be run separately
+        // PRAGMA 必须在其他命令之前单独执行
         using var pragmaCmd = conn.CreateCommand();
         pragmaCmd.CommandText = "PRAGMA journal_mode=WAL;";
         await pragmaCmd.ExecuteNonQueryAsync();
@@ -84,6 +89,7 @@ public class AppDbContext
         }
     }
 
+    /// <summary>执行非查询 SQL 辅助方法</summary>
     private static async Task ExecuteNonQueryAsync(SqliteConnection conn, string sql)
     {
         using var cmd = conn.CreateCommand();
@@ -91,6 +97,7 @@ public class AppDbContext
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>插入所有固定硬盘根目录作为默认扫描路径</summary>
     private static async Task InsertDefaultFixedDriveRootsAsync(SqliteConnection conn)
     {
         foreach (var drive in DriveInfo.GetDrives())
@@ -105,10 +112,11 @@ public class AppDbContext
         }
     }
 
-    // ScanIndex CRUD
-    public async Task<List<SymlinkEntry>> LoadAllLinksAsync()
+    // === ScanIndex CRUD ===
+    /// <summary>加载所有链接索引，左连白名单表以获取完整白名单状态</summary>
+    public async Task<List<LinkEntry>> LoadAllLinksAsync()
     {
-        var links = new List<SymlinkEntry>();
+        var links = new List<LinkEntry>();
         using var conn = CreateConnection();
         await conn.OpenAsync();
 
@@ -123,12 +131,12 @@ public class AppDbContext
             var inWhitelistFromIndex = reader.GetInt32(6) == 1;
             var inWhitelistFromTable = !reader.IsDBNull(8);
 
-            links.Add(new SymlinkEntry
+            links.Add(new LinkEntry
             {
                 LinkPath = reader.GetString(0),
                 LinkName = reader.GetString(1),
                 TargetPath = reader.GetString(2),
-                LinkType = (SymlinkType)reader.GetInt32(3),
+                LinkType = (LinkType)reader.GetInt32(3),
                 CreationTime = reader.GetString(4),
                 Status = (LinkStatus)reader.GetInt32(5),
                 InWhitelist = inWhitelistFromIndex || inWhitelistFromTable,
@@ -138,7 +146,8 @@ public class AppDbContext
         return links;
     }
 
-    public async Task UpsertLinkAsync(SymlinkEntry entry)
+    /// <summary>插入或更新单条链接记录（按 LinkPath 冲突合并）</summary>
+    public async Task UpsertLinkAsync(LinkEntry entry)
     {
         using var conn = CreateConnection();
         await conn.OpenAsync();
@@ -162,7 +171,8 @@ public class AppDbContext
         await cmd.ExecuteNonQueryAsync();
     }
 
-    public async Task BatchUpsertLinksAsync(IEnumerable<SymlinkEntry> entries)
+    /// <summary>批量插入或更新链接记录，在事务中执行以提高性能</summary>
+    public async Task BatchUpsertLinksAsync(IEnumerable<LinkEntry> entries)
     {
         using var conn = CreateConnection();
         await conn.OpenAsync();
@@ -193,6 +203,7 @@ public class AppDbContext
         tx.Commit();
     }
 
+    /// <summary>删除指定路径的链接记录</summary>
     public async Task DeleteLinkAsync(string linkPath)
     {
         using var conn = CreateConnection();
@@ -203,6 +214,7 @@ public class AppDbContext
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>清空整个链接索引表</summary>
     public async Task ClearIndexAsync()
     {
         using var conn = CreateConnection();
@@ -212,7 +224,8 @@ public class AppDbContext
         await cmd.ExecuteNonQueryAsync();
     }
 
-    // Whitelist CRUD
+    // === Whitelist CRUD ===
+    /// <summary>添加白名单项并同步更新 LinkIndex 的白名单标记</summary>
     public async Task AddWhitelistAsync(string path, string source)
     {
         using var conn = CreateConnection();
@@ -230,6 +243,7 @@ public class AppDbContext
         await updateCmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>移除白名单项并同步清除 LinkIndex 的白名单标记</summary>
     public async Task RemoveWhitelistAsync(string path)
     {
         using var conn = CreateConnection();
@@ -246,6 +260,7 @@ public class AppDbContext
         await updateCmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>获取所有白名单路径列表</summary>
     public async Task<List<string>> GetAllWhitelistPathsAsync()
     {
         var paths = new List<string>();
@@ -259,7 +274,8 @@ public class AppDbContext
         return paths;
     }
 
-    // ScanDirectories CRUD
+    // === ScanDirectories CRUD ===
+    /// <summary>加载所有扫描目录配置</summary>
     public async Task<List<ScanDirectoryConfig>> LoadScanDirectoriesAsync()
     {
         var dirs = new List<ScanDirectoryConfig>();
@@ -281,6 +297,7 @@ public class AppDbContext
         return dirs;
     }
 
+    /// <summary>全量保存扫描目录配置（先清空再插入，事务中执行）</summary>
     public async Task SaveScanDirectoriesAsync(List<ScanDirectoryConfig> dirs)
     {
         using var conn = CreateConnection();

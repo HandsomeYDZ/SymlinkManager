@@ -10,6 +10,9 @@ using WinLinkManager.Core.Services;
 
 namespace WinLinkManager.App.ViewModels;
 
+/// <summary>
+/// 设置界面的 ViewModel，管理扫描目录列表和数据库路径配置。
+/// </summary>
 public class SettingsViewModel : ViewModelBase
 {
     private readonly IIndexService _indexService;
@@ -40,6 +43,7 @@ public class SettingsViewModel : ViewModelBase
     public ICommand OpenConfigFolderCommand { get; }
     public ICommand OpenDataFolderCommand { get; }
 
+    /// <summary> 无参构造用于设计时或手动创建，不加载数据。 </summary>
     public SettingsViewModel()
     {
         _indexService = null!;
@@ -54,13 +58,14 @@ public class SettingsViewModel : ViewModelBase
         OpenDataFolderCommand = new RelayCommand(() => OpenFolder(App.DataDir));
     }
 
-    // DI constructor used at runtime
+    /// <summary> DI 构造，注入 IIndexService 并异步加载扫描目录列表。 </summary>
     public SettingsViewModel(IIndexService indexService) : this()
     {
         _indexService = indexService;
         _ = LoadAsync();
     }
 
+    /// <summary> 从索引服务加载扫描目录列表。 </summary>
     private async Task LoadAsync()
     {
         var dirs = await _indexService.GetScanDirectoriesAsync();
@@ -87,6 +92,7 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
+    /// <summary> 弹出文件夹选择对话框添加新的扫描目录，重复路径跳过。 </summary>
     private void AddScanDir()
     {
         string path;
@@ -103,6 +109,7 @@ public class SettingsViewModel : ViewModelBase
         _ = SaveAsync();
     }
 
+    /// <summary> 从列表中移除选中的扫描目录并持久化。 </summary>
     private void RemoveScanDir()
     {
         if (SelectedDir is null) return;
@@ -110,6 +117,7 @@ public class SettingsViewModel : ViewModelBase
         _ = SaveAsync();
     }
 
+    /// <summary> 切换选中目录的排除/扫描标记。 </summary>
     private void ToggleExclude()
     {
         if (SelectedDir is null) return;
@@ -117,6 +125,7 @@ public class SettingsViewModel : ViewModelBase
         _ = SaveAsync();
     }
 
+    /// <summary> 将当前扫描目录列表保存到索引服务。 </summary>
     private async Task SaveAsync()
     {
         var configs = ScanDirectories.Select(d => new ScanDirectoryConfig
@@ -128,6 +137,7 @@ public class SettingsViewModel : ViewModelBase
         await _indexService.SaveScanDirectoriesAsync(configs);
     }
 
+    /// <summary> 选择新的数据库文件位置，复制旧数据并保存配置。 </summary>
     private void ChangeDatabasePath()
     {
         var dialog = new SaveFileDialog
@@ -144,6 +154,7 @@ public class SettingsViewModel : ViewModelBase
         {
             var newDir = Path.GetDirectoryName(newPath)!;
             Directory.CreateDirectory(newDir);
+            // 复制现有数据库到新位置
             if (File.Exists(DatabasePath))
             {
                 File.Copy(DatabasePath, newPath, overwrite: true);
@@ -161,16 +172,20 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
+    /// <summary> 在资源管理器中打开指定文件夹。 </summary>
     private static void OpenFolder(string path)
     {
         if (Directory.Exists(path))
             Process.Start("explorer.exe", path);
     }
 
-    public string AppVersion => "Symlink Manager v1.0.0";
+    public string AppVersion => "WinLink Manager v1.0.0";
     public string Description => "Windows 符号链接管理器 — 扫描、管理、监控文件系统中的符号链接和交接点。";
 }
 
+/// <summary>
+/// 扫描目录列表中的单个条目，含路径和排除状态。
+/// </summary>
 public class ScanDirectoryItem : ViewModelBase
 {
     private string _path = "";
