@@ -22,7 +22,7 @@ jobs:
 
       - name: 发布项目
         run: >
-          dotnet publish SymlinkManager.App
+          dotnet publish WinLinkManager.App
           -c Release
           -r win-x64
           --self-contained true
@@ -34,14 +34,14 @@ jobs:
       - name: 上传到 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: SymlinkManager ${{ github.event.inputs.version }}
+          name: WinLinkManager ${{ github.event.inputs.version }}
           tag_name: ${{ github.event.inputs.version }}
           body: |
             ## 更新内容
             - 自动构建，提交: ${{ github.sha }}
 
             ## 使用
-            下载 `SymlinkManager.App.exe`，右键 → 以管理员身份运行。
-          files: publish/SymlinkManager.App.exe
+            下载 `WinLinkManager.App.exe`，右键 → 以管理员身份运行。
+          files: publish/WinLinkManager.App.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

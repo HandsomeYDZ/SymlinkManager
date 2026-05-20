@@ -25,20 +25,20 @@
 ### 直接运行（开发环境）
 
 ```bash
-dotnet run --project SymlinkManager.App
+dotnet run --project WinLinkManager.App
 ```
 
 ### 独立 EXE（无需 .NET 运行时）
 
-从 [Releases](../../releases) 下载 `SymlinkManager.App.exe`，右键 → **以管理员身份运行**。
+从 [Releases](../../releases) 下载 `WinLinkManager.App.exe`，右键 → **以管理员身份运行**。
 
 ### 自行打包
 
 ```bash
-dotnet publish SymlinkManager.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish
+dotnet publish WinLinkManager.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish
 ```
 
-输出：`publish\SymlinkManager.App.exe` (~142MB)
+输出：`publish\WinLinkManager.App.exe` (~142MB)
 
 > **需要管理员权限** — 扫描 NTFS 卷必需，启动时如果不在管理员终端会弹出提权对话框。
 
@@ -47,7 +47,7 @@ dotnet publish SymlinkManager.App -c Release -r win-x64 --self-contained true -p
 所有数据（数据库、配置、日志）存储在：
 
 ```
-%LocalAppData%\SymlinkManager\
+%LocalAppData%\WinLinkManager\
 ```
 
 ## License
