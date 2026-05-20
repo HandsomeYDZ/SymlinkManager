@@ -12,13 +12,12 @@
 - **实时搜索** — 按名称/路径即时过滤
 - **创建链接** — 支持三种类型：文件符号链接、目录符号链接(/D)、交接点(/J)
 - **类型转换** — /D ↔ /J 一键互转，带预览确认和备份回滚
-- **白名单系统** — 软件创建的链接自动加入白名单，支持右键手动添加/移除；底部 Tab 切换"全部"/"白名单"视图
-- **增量更新** — USN Journal 监控文件系统变更，索引保持实时同步
+- **白名单** — 软件创建的链接自动加入白名单，支持右键手动添加/移除；底部 Tab 切换"全部"/"白名单"视图
 
 ## 技术栈
 
 - C# / .NET 10 / WPF
-- NTFS USN (FSCTL_ENUM_USN_DATA) 直读扫描
+- NTFS USN (FSCTL_ENUM_USN_DATA) 
 - SQLite 嵌入式数据库
 
 ## 使用
@@ -36,7 +35,7 @@ dotnet run --project SymlinkManager.App
 ### 自行打包
 
 ```bash
-dotnet publish SymlinkManager.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+dotnet publish SymlinkManager.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish
 ```
 
 输出：`publish\SymlinkManager.App.exe` (~142MB)
