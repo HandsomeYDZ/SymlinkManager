@@ -1,6 +1,6 @@
 # WinLinkManager — Windows 符号链接管理器
 
--- 该项目完全由AI编译完成，如有侵权或不当使用的地方请指正
+> **⚠️ 该项目完全由AI编译完成，如有侵权或不当使用的地方请指正
 
 Windows 平台 NTFS 符号链接 / 交接点（Junction）管理工具。
 
