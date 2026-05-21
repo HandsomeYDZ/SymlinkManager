@@ -16,8 +16,6 @@ Windows 平台 NTFS 符号链接 / 交接点（Junction）管理工具。
 - **数据库：** SQLite（Microsoft.Data.Sqlite）
 - **依赖注入：** Microsoft.Extensions.DependencyInjection
 - **日志：** Serilog（文件滚动日志，保留 30 天）
-- **底层 API：** NTFS USN Journal、FSCTL 重解析点操作、MFT 枚举
-- **配置：** JSON 配置文件（%LocalAppData%\WinLinkManager\config\）
 
 ## 项目结构
 
